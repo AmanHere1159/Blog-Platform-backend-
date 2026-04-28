@@ -1,12 +1,14 @@
 const dotenv = require('dotenv');
-dotenv.config(); // Load environment variables as early as possible
+dotenv.config();
 
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
-const router = require("./router/router");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
+
+// Import router after dotenv config
+const router = require("./router/router");
 
 const app = express();
 
@@ -16,8 +18,9 @@ app.use(morgan('dev'));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Favicon handler to prevent 404/500 on browser auto-requests
+// Early response for health check and favicon
 app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/health', (req, res) => res.status(200).send("OK"));
 
 const allowedOrigins = [
     "https://blog-platform-frontend-tan.vercel.app",
@@ -31,19 +34,16 @@ if (process.env.FRONTEND_URL) {
 
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
         
-        // Check if origin is in allowed list or is a vercel subdomain
         const isAllowed = allowedOrigins.includes(origin) || 
-                         origin.endsWith(".vercel.app") || 
-                         origin === process.env.FRONTEND_URL;
+                         origin.endsWith(".vercel.app");
 
         if (isAllowed) {
             return callback(null, true);
         } else {
-            console.log("CORS blocked origin:", origin);
-            return callback(new Error('CORS policy block'), false);
+            console.warn("CORS Blocked Origin:", origin);
+            return callback(null, false); // Just block it, don't throw an error to avoid 500
         }
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -57,42 +57,41 @@ app.options("*", cors());
 // Routes
 app.use("/Blogs", router);
 
-// Static folders
+// Static folders (Note: Vercel has read-only filesystem except /tmp)
 app.use('/uploads', express.static('uploads'));
 app.use('/Audio', express.static('Audio'));
 
 app.get('/', (req, res) => {
-    res.send("Server is up and running");
+    res.status(200).send("Blog Platform Backend is Running");
 });
 
-// MongoDB Connection with improved handling
+// MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-    console.error("CRITICAL ERROR: MONGO_URI is not defined in environment variables.");
+    console.error("MONGO_URI is missing in environment variables!");
 } else {
     mongoose.connect(MONGO_URI)
-        .then(() => console.log('MongoDB Connected'))
+        .then(() => console.log('MongoDB Connected Successfully'))
         .catch(err => {
-            console.error('MongoDB Connection Error:', err);
-            // Don't exit process on Vercel, just log it
+            console.error('MongoDB Connection Failed:', err.message);
         });
 }
 
-// Global error handler
+// Global Error Handler
 app.use((err, req, res, next) => {
-    console.error("Unhandled Error:", err.message);
+    console.error("Server Error:", err.stack);
     res.status(500).json({
         error: "Internal Server Error",
         message: err.message
     });
 });
 
-// Conditional listen for local development
+// Start Server (only for local development)
 const port = process.env.PORT || 5004;
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     app.listen(port, () => {
-        console.log(`Server is running on port ${port}`);
+        console.log(`Server is running on http://localhost:${port}`);
     });
 }
 
