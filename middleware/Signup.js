@@ -1,5 +1,5 @@
 const Signupis = require("../Models/Signup.model");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { Generate } = require("./Auth");
 exports.SignupModule = async (req, res, next) => {
   try {
